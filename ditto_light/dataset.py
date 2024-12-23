@@ -34,7 +34,7 @@ class DittoDataset(data.Dataset):
         if isinstance(path, list):
             lines = path
         else:
-            lines = open(path)
+            lines = open(path, encoding='utf-8')
 
         for line in lines:
             s1, s2, label = line.strip().split('\t')
@@ -114,4 +114,3 @@ class DittoDataset(data.Dataset):
             x12 = [xi + [0]*(maxlen - len(xi)) for xi in x12]
             return torch.LongTensor(x12), \
                    torch.LongTensor(y)
-

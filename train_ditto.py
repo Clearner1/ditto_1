@@ -17,19 +17,19 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", type=str, default="Structured/Beer")
     parser.add_argument("--run_id", type=int, default=0)
-    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--max_len", type=int, default=256)
     parser.add_argument("--lr", type=float, default=3e-5)
-    parser.add_argument("--n_epochs", type=int, default=20)
+    parser.add_argument("--n_epochs", type=int, default=15)
     parser.add_argument("--finetuning", dest="finetuning", action="store_true")
     parser.add_argument("--save_model", dest="save_model", action="store_true")
     parser.add_argument("--logdir", type=str, default="checkpoints/")
-    parser.add_argument("--lm", type=str, default='distilbert')
+    parser.add_argument("--lm", type=str, default='roberta')
     parser.add_argument("--fp16", dest="fp16", action="store_true")
     parser.add_argument("--da", type=str, default=None)
     parser.add_argument("--alpha_aug", type=float, default=0.8)
     parser.add_argument("--dk", type=str, default=None)
-    parser.add_argument("--summarize", dest="summarize", action="store_true")
+    parser.add_argument("--summarize", dest="summarize", action="store_true",default=None)
     parser.add_argument("--size", type=int, default=None)
 
     hp = parser.parse_args()
@@ -39,8 +39,15 @@ if __name__=="__main__":
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+
+    # check CUDA availability
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+        print(f"CUDA is available. Using GPU: {torch.cuda.get_device_name(0)}")
+        device = 'cuda'
+    else:
+        print("CUDA is not available. Using CPU instead.")
+        device = 'cpu'
 
     # only a single task for baseline
     task = hp.task
@@ -86,7 +93,9 @@ if __name__=="__main__":
     test_dataset = DittoDataset(testset, lm=hp.lm)
 
     # train and evaluate the model
-    train(train_dataset,
-          valid_dataset,
-          test_dataset,
-          run_tag, hp)
+    train(trainset=train_dataset,
+          validset=valid_dataset,
+          testset=test_dataset,
+          run_tag=run_tag,
+          hp=hp,
+          device=device)

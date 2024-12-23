@@ -1,9 +1,11 @@
 import os
 import sys
 import torch
+from torch.amp import autocast, GradScaler
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.optim import AdamW
 import random
 import numpy as np
 import sklearn.metrics as metrics
@@ -11,9 +13,8 @@ import argparse
 
 from .dataset import DittoDataset
 from torch.utils import data
-from transformers import AutoModel, AdamW, get_linear_schedule_with_warmup
+from transformers import AutoModel, get_linear_schedule_with_warmup
 from tensorboardX import SummaryWriter
-from apex import amp
 
 lm_mp = {'roberta': 'roberta-base',
          'distilbert': 'distilbert-base-uncased'}
@@ -119,32 +120,36 @@ def train_step(train_iter, model, optimizer, scheduler, hp):
         None
     """
     criterion = nn.CrossEntropyLoss()
-    # criterion = nn.MSELoss()
+    scaler = GradScaler('cuda', enabled=hp.fp16)
+
     for i, batch in enumerate(train_iter):
         optimizer.zero_grad()
 
-        if len(batch) == 2:
-            x, y = batch
-            prediction = model(x)
-        else:
-            x1, x2, y = batch
-            prediction = model(x1, x2)
+        with autocast(device_type='cuda', enabled=hp.fp16):
+            if len(batch) == 2:
+                x, y = batch
+                prediction = model(x)
+            else:
+                x1, x2, y = batch
+                prediction = model(x1, x2)
 
-        loss = criterion(prediction, y.to(model.device))
+            loss = criterion(prediction, y.to(model.device))
 
         if hp.fp16:
-            with amp.scale_loss(loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
         else:
             loss.backward()
-        optimizer.step()
+            optimizer.step()
+
         scheduler.step()
         if i % 10 == 0: # monitoring
             print(f"step: {i}, loss: {loss.item()}")
         del loss
 
 
-def train(trainset, validset, testset, run_tag, hp):
+def train(trainset, validset, testset, run_tag, hp, device='cuda'):
     """Train and evaluate the model
 
     Args:
@@ -152,8 +157,8 @@ def train(trainset, validset, testset, run_tag, hp):
         validset (DittoDataset): the validation set
         testset (DittoDataset): the test set
         run_tag (str): the tag of the run
-        hp (Namespace): Hyper-parameters (e.g., batch_size,
-                        learning rate, fp16)
+        hp (Namespace): Hyper-parameters (e.g., batch_size, learning rate, fp16)
+        device (str): the device to use (cuda or cpu)
 
     Returns:
         None
@@ -177,15 +182,10 @@ def train(trainset, validset, testset, run_tag, hp):
                                  collate_fn=padder)
 
     # initialize model, optimizer, and LR scheduler
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model = DittoModel(device=device,
-                       lm=hp.lm,
-                       alpha_aug=hp.alpha_aug)
-    model = model.cuda()
+    model = DittoModel(device=device, lm=hp.lm)
+    model = model.to(device)
     optimizer = AdamW(model.parameters(), lr=hp.lr)
 
-    if hp.fp16:
-        model, optimizer = amp.initialize(model, optimizer, opt_level='O2')
     num_steps = (len(trainset) // hp.batch_size) * hp.n_epochs
     scheduler = get_linear_schedule_with_warmup(optimizer,
                                                 num_warmup_steps=0,
