@@ -19,7 +19,7 @@ lm_mp = {
 class DittoHGATModel(nn.Module):
     """Enhanced Ditto model with Hierarchical Graph Attention Networks"""
     
-    def __init__(self, device='cuda', lm='roberta', alpha_aug=0.8):
+    def __init__(self, device='cuda', lm='roberta', alpha_aug=0.8, num_views=3):
         super().__init__()
         # Load pre-trained language model
         if lm in lm_mp:
@@ -29,6 +29,7 @@ class DittoHGATModel(nn.Module):
 
         self.device = device
         self.alpha_aug = alpha_aug
+        self.num_views = num_views
 
         # Get hidden size from BERT config
         hidden_size = self.bert.config.hidden_size
@@ -38,84 +39,86 @@ class DittoHGATModel(nn.Module):
         self.global_attention = GlobalAttentionLayer(hidden_size)
         self.struct_attention = StructAttentionLayer(hidden_size)
 
+        # Initialize view-specific layers
+        self.view_fcs = nn.ModuleList([
+            nn.Linear(hidden_size, hidden_size)
+            for _ in range(num_views)
+        ])
+
         # Final classification layer
         self.fc = nn.Linear(hidden_size, 2)
 
-    def encode_attribute(self, input_ids, attention_mask=None):
-        """Encode a single attribute pair using BERT and attention mechanisms"""
+    def encode_sequence(self, input_ids, attention_mask=None):
+        """Encode a sequence using BERT and attention mechanisms"""
         outputs = self.bert(input_ids, attention_mask=attention_mask)
         sequence_output = outputs[0]  # (batch_size, seq_len, hidden_size)
-        
+        cls_output = sequence_output[:, 0]  # (batch_size, hidden_size)
+
         # Apply different attention mechanisms
         token_repr = self.token_attention(sequence_output, attention_mask)
         global_repr = self.global_attention(sequence_output, attention_mask)
         
-        # Combine representations
-        combined_repr = token_repr + global_repr
+        # Create different views
+        views = [
+            cls_output,  # CLS token view
+            token_repr,  # Token-level attention view
+            global_repr  # Global attention view
+        ]
+
+        # Apply view-specific transformations
+        views = [fc(view) for fc, view in zip(self.view_fcs, views)]
+
+        # Combine views using structural attention
+        combined_repr = self.struct_attention(views)
         
         return combined_repr
 
-    def forward(self, encoded_pairs, attention_masks, labels=None):
-        """Forward pass with attribute-level processing
+    def forward(self, x1, x2=None):
+        """Forward pass with optional MixDA augmentation"""
+        x1 = x1.to(self.device)
         
-        Args:
-            encoded_pairs: tensor of shape [num_attrs, batch_size, seq_len]
-            attention_masks: tensor of shape [batch_size, seq_len, num_attrs]
-            labels: optional tensor of shape [batch_size]
+        if x2 is not None:
+            # MixDA augmentation
+            x2 = x2.to(self.device)
             
-        Returns:
-            logits: tensor of shape [batch_size, 2]
-        """
-        num_attrs, batch_size, seq_len = encoded_pairs.size()
-        
-        # Move tensors to device
-        encoded_pairs = encoded_pairs.to(self.device)
-        attention_masks = attention_masks.to(self.device)
-        if labels is not None:
-            labels = labels.to(self.device)
-        
-        # Process each attribute pair
-        attr_outputs = []
-        for i in range(num_attrs):
-            # Get current attribute pair for all batches
-            curr_pairs = encoded_pairs[i]  # [batch_size, seq_len]
-            curr_masks = attention_masks[:, :, i]  # [batch_size, seq_len]
+            # Get attention masks
+            attention_mask1 = (x1 != self.bert.config.pad_token_id).float()
+            attention_mask2 = (x2 != self.bert.config.pad_token_id).float()
             
-            # Encode the attribute pair
-            attr_repr = self.encode_attribute(curr_pairs, curr_masks)
-            attr_outputs.append(attr_repr)
-        
-        # Stack all attribute representations
-        attr_outputs = torch.stack(attr_outputs, dim=1)  # [batch_size, num_attrs, hidden_size]
-        
-        # Apply structural attention to combine attribute representations
-        final_repr = self.struct_attention(attr_outputs)  # [batch_size, hidden_size]
-        
-        # Get logits
-        logits = self.fc(final_repr)
-        
-        if labels is not None:
-            # Calculate loss if labels are provided
-            loss_fct = nn.CrossEntropyLoss()
-            loss = loss_fct(logits, labels)
-            return loss, logits
-        
-        return logits
+            # Encode both sequences
+            enc1 = self.encode_sequence(x1, attention_mask1)
+            enc2 = self.encode_sequence(x2, attention_mask2)
+            
+            # Apply MixDA
+            aug_lam = torch.tensor(
+                np.random.beta(self.alpha_aug, self.alpha_aug),
+                device=self.device
+            )
+            mixed_enc = enc1 * aug_lam + enc2 * (1.0 - aug_lam)
+            return self.fc(mixed_enc)
+        else:
+            # Regular forward pass
+            attention_mask = (x1 != self.bert.config.pad_token_id).float()
+            enc = self.encode_sequence(x1, attention_mask)
+            return self.fc(enc)
 
 
 def train_epoch(model, iterator, optimizer, scheduler=None, hp=None):
     """Train the model for one epoch"""
     model.train()
+    criterion = nn.CrossEntropyLoss()
     total_loss = 0
     
     for i, batch in enumerate(iterator):
         optimizer.zero_grad()
         
         # Get the inputs
-        encoded_pairs, attention_masks, labels = batch
+        x1, x2 = batch[0], batch[1]
+        labels = batch[-1].to(model.device)
         
         # Forward pass
-        loss, logits = model(encoded_pairs, attention_masks, labels)
+        logits = model(x1, x2)
+        loss = criterion(logits, labels)
         
         # Backward pass
         loss.backward()
@@ -144,10 +147,10 @@ def evaluate(model, iterator):
     
     with torch.no_grad():
         for batch in iterator:
-            encoded_pairs, attention_masks, labels = batch
+            x1 = batch[0]
+            labels = batch[-1].to(model.device)
             
-            # Forward pass
-            logits = model(encoded_pairs, attention_masks)
+            logits = model(x1)
             preds = torch.argmax(logits, dim=1)
             
             all_preds.extend(preds.cpu().numpy())
@@ -192,7 +195,7 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
         num_workers=0
     )
     
-    # Initialize model
+    # Initialize model with attribute number from dataset
     model = DittoHGATModel(
         device=device,
         lm=hp.lm
@@ -234,7 +237,7 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
     # Training loop
     best_dev_f1 = 0.0
     best_epoch = 0
-    patience = 10  # Early stopping patience
+    patience = 5  # Early stopping patience
     no_improvement = 0
     
     for epoch in range(hp.n_epochs):
@@ -298,4 +301,4 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
     print(f'  F1: {final_test_metrics["f1"]:.4f}')
     
     writer.close()
-    return final_test_metrics 
+    return final_test_metrics

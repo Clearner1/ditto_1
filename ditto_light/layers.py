@@ -81,20 +81,17 @@ class StructAttentionLayer(nn.Module):
     def forward(self, representations):
         """
         Args:
-            representations: list of tensors, each (batch_size, hidden_size)
+            representations: tensor of shape (batch_size, num_attrs, hidden_size)
         Returns:
             weighted_sum: (batch_size, hidden_size)
         """
-        # Stack representations
-        stacked = torch.stack(representations, dim=1)  # (batch_size, num_views, hidden_size)
-        
         # Calculate attention scores
-        attention = torch.matmul(stacked, self.a).squeeze(-1)  # (batch_size, num_views)
+        attention = torch.matmul(representations, self.a).squeeze(-1)  # (batch_size, num_attrs)
         attention = self.leakyrelu(attention)
         
         # Apply softmax to get attention weights
-        attention_weights = F.softmax(attention, dim=1)  # (batch_size, num_views)
+        attention_weights = F.softmax(attention, dim=1)  # (batch_size, num_attrs)
         
         # Calculate weighted sum
-        weighted_sum = torch.bmm(attention_weights.unsqueeze(1), stacked).squeeze(1)
+        weighted_sum = torch.bmm(attention_weights.unsqueeze(1), representations).squeeze(1)
         return weighted_sum
