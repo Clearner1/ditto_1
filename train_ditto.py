@@ -17,7 +17,7 @@ if __name__=="__main__":
     parser.add_argument("--model_type", type=str, default="ditto_hgat",
                       choices=["ditto", "ditto_hgat"],
                       help="Choose between original Ditto or enhanced DittoHGAT")
-    parser.add_argument("--task", type=str, default="Structured/DBLP-ACM")
+    parser.add_argument("--task", type=str, default="Structured/Beer")
     parser.add_argument("--run_id", type=int, default=0)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--max_len", type=int, default=256)
@@ -30,7 +30,7 @@ if __name__=="__main__":
     parser.add_argument("--fp16", dest="fp16", action="store_true")
     parser.add_argument("--size", type=int, default=None)
     parser.add_argument("--use_number_perception", action="store_true",
-                      help="Whether to use number perception module", default=True)
+                      help="Whether to use number perception module", default=False)
     parser.add_argument("--number_perception_api_key", type=str, 
                       help="API key for DeepSeek LLM",default="sk-2d50kWpmx7zcZyzXUcB94TXXBnxNZbGHx95zTqcCPHG7Luy8")
     parser.add_argument("--number_perception_weight", type=float, default=0.5,

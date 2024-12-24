@@ -31,7 +31,7 @@ def get_cached_feature(attribute_name, attribute_value):
     
     hash_value = get_hash(attribute_name, attribute_value)
     cursor.execute('''
-        SELECT feature_word FROM feature_cache 
+        SELECT feature_word FROM Beer_cache 
         WHERE hash_value = %s
     ''', (hash_value,))
     

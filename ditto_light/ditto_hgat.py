@@ -19,7 +19,8 @@ lm_mp = {
 class DittoHGATModel(nn.Module):
     """Enhanced Ditto model with Hierarchical Graph Attention Networks and Number Perception"""
     
-    def __init__(self, device='cuda', lm='roberta', alpha_aug=0.8, use_number_perception=False):
+    def __init__(self, device='cuda', lm='roberta', alpha_aug=0.8, 
+                 use_number_perception=False, number_perception_weight=0.5):
         super().__init__()
         # Load pre-trained language model
         if lm in lm_mp:
@@ -30,6 +31,7 @@ class DittoHGATModel(nn.Module):
         self.device = device
         self.alpha_aug = alpha_aug
         self.use_number_perception = use_number_perception
+        self.number_perception_weight = number_perception_weight  # 存储权重参数
 
         # Get hidden size from BERT config
         hidden_size = self.bert.config.hidden_size
@@ -121,10 +123,9 @@ class DittoHGATModel(nn.Module):
             # 使用权重进行特征融合
             # text_repr 和 num_repr 都是 [batch_size, hidden_size]
             # 使用 number_perception_weight 来控制两种特征的比重
-            alpha = getattr(self, 'number_perception_weight', 0.3)  # 默认权重改为 0.3
             combined_repr = torch.cat([
-                (1 - alpha) * text_repr,  # 文本特征权重
-                alpha * num_repr          # 数字特征权重
+                (1 - self.number_perception_weight) * text_repr,  # 文本特征权重
+                self.number_perception_weight * num_repr          # 数字特征权重
             ], dim=-1)
             
             # 通过融合层
@@ -236,7 +237,9 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
     # Initialize model
     model = DittoHGATModel(
         device=device,
-        lm=hp.lm
+        lm=hp.lm,
+        use_number_perception=hp.use_number_perception,
+        number_perception_weight=hp.number_perception_weight
     ).to(device)
     
     # Initialize optimizer with weight decay
