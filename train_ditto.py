@@ -17,7 +17,7 @@ if __name__=="__main__":
     parser.add_argument("--model_type", type=str, default="ditto_hgat",
                       choices=["ditto", "ditto_hgat"],
                       help="Choose between original Ditto or enhanced DittoHGAT")
-    parser.add_argument("--task", type=str, default="Structured/Beer")
+    parser.add_argument("--task", type=str, default="Structured/DBLP-ACM")
     parser.add_argument("--run_id", type=int, default=0)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--max_len", type=int, default=256)
@@ -29,6 +29,12 @@ if __name__=="__main__":
     parser.add_argument("--lm", type=str, default='roberta')
     parser.add_argument("--fp16", dest="fp16", action="store_true")
     parser.add_argument("--size", type=int, default=None)
+    parser.add_argument("--use_number_perception", action="store_true",
+                      help="Whether to use number perception module", default=True)
+    parser.add_argument("--number_perception_api_key", type=str, 
+                      help="API key for DeepSeek LLM",default="sk-2d50kWpmx7zcZyzXUcB94TXXBnxNZbGHx95zTqcCPHG7Luy8")
+    parser.add_argument("--number_perception_weight", type=float, default=0.5,
+                      help="Weight for number perception feature fusion")
 
     hp = parser.parse_args()
 
@@ -47,8 +53,9 @@ if __name__=="__main__":
 
     task = hp.task
 
-    run_tag = '%s_model=%s_lm=%s_size=%s_id=%d' % (
-        task, hp.model_type, hp.lm, str(hp.size), hp.run_id)
+    run_tag = '%s_model=%s_lm=%s_size=%s_np=%s_id=%d' % (
+        task, hp.model_type, hp.lm, str(hp.size), 
+        str(hp.use_number_perception), hp.run_id)
     run_tag = run_tag.replace('/', '_')
 
     configs = json.load(open('configs.json'))
@@ -62,9 +69,19 @@ if __name__=="__main__":
     train_dataset = DittoDataset(trainset,
                                 lm=hp.lm,
                                 max_len=hp.max_len,
-                                size=hp.size)
-    valid_dataset = DittoDataset(validset, lm=hp.lm)
-    test_dataset = DittoDataset(testset, lm=hp.lm)
+                                size=hp.size,
+                                use_number_perception=hp.use_number_perception,
+                                number_perception_api_key=hp.number_perception_api_key)
+    
+    valid_dataset = DittoDataset(validset, 
+                                lm=hp.lm,
+                                use_number_perception=hp.use_number_perception,
+                                number_perception_api_key=hp.number_perception_api_key)
+    
+    test_dataset = DittoDataset(testset, 
+                               lm=hp.lm,
+                               use_number_perception=hp.use_number_perception,
+                               number_perception_api_key=hp.number_perception_api_key)
 
     train_fn = hgat_train if hp.model_type == "ditto_hgat" else ditto_train
     train_fn(trainset=train_dataset,

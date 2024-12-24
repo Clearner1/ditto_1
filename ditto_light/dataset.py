@@ -3,7 +3,7 @@ import torch
 from torch.utils import data
 from transformers import AutoTokenizer
 
-from .augment import Augmenter
+from .number_perception_cache import NumberPerceptionCache
 
 # map lm name to huggingface's pre-trained model names
 lm_mp = {'roberta': 'roberta-base',
@@ -24,13 +24,32 @@ class DittoDataset(data.Dataset):
                  max_len=256,
                  size=None,
                  lm='roberta',
-                 da=None):
+                 da=None,
+                 use_number_perception=False,
+                 number_perception_api_key=None,
+                 db_config=None):
         self.tokenizer = get_tokenizer(lm)
         self.pairs = []
         self.labels = []
         self.max_len = max_len
         self.size = size
-
+        
+        # 初始化数字感知模块
+        self.use_number_perception = use_number_perception
+        if use_number_perception:
+            if db_config is None:
+                db_config = {
+                    "host": "139.155.108.161",
+                    "user": "ditto",
+                    "password": "Ditto@123456",
+                    "database": "number_perception"
+                }
+            self.number_perception = NumberPerceptionCache(
+                api_key=number_perception_api_key,
+                db_config=db_config
+            )
+            self.number_similarities = {}  # 缓存计算结果
+        
         if isinstance(path, list):
             lines = path
         else:
@@ -41,6 +60,13 @@ class DittoDataset(data.Dataset):
             # 将每个实体拆分成属性
             attrs1 = self._split_attributes(s1)
             attrs2 = self._split_attributes(s2)
+            
+            # 计算数字感知相似度
+            if use_number_perception:
+                pair_key = (s1, s2)
+                if pair_key not in self.number_similarities:
+                    self.number_similarities[pair_key] = self.number_perception.compare_entities(s1, s2)
+            
             self.pairs.append((attrs1, attrs2))
             self.labels.append(int(label))
 
@@ -73,7 +99,11 @@ class DittoDataset(data.Dataset):
             idx (int): the index of the item
 
         Returns:
-            Tuple of (encoded_pairs, masks, label)
+            Tuple of (encoded_pairs, masks, label, num_similarity)
+            - encoded_pairs: tensor of shape [num_attrs, seq_len]
+            - masks: tensor of shape [num_attrs, seq_len]
+            - label: int
+            - num_similarity: float, 数字感知相似度
         """
         attrs1, attrs2 = self.pairs[idx]
         label = self.labels[idx]
@@ -111,8 +141,17 @@ class DittoDataset(data.Dataset):
         # 将所有属性对堆叠成一个张量
         encoded_pairs = torch.stack(encoded_pairs)  # [num_attrs, seq_len]
         masks = torch.stack(masks)  # [num_attrs, seq_len]
+        
+        # 获取数字感知相似度
+        if self.use_number_perception:
+            # 重建原始文本以获取缓存的相似度
+            s1 = ' '.join([f"COL {name} VAL {val}" for name, val in attrs1])
+            s2 = ' '.join([f"COL {name} VAL {val}" for name, val in attrs2])
+            num_similarity = self.number_similarities.get((s1, s2), 0.0)
+        else:
+            num_similarity = 0.0
 
-        return encoded_pairs, masks, label
+        return encoded_pairs, masks, label, num_similarity
 
     @staticmethod
     def pad(batch):
@@ -126,14 +165,16 @@ class DittoDataset(data.Dataset):
                 encoded_pairs: [num_attrs, batch_size, seq_len]
                 masks: [batch_size, seq_len, num_attrs]
                 labels: [batch_size]
+                num_similarities: [batch_size]
         """
         if len(batch) == 0:
-            return None, None, None
+            return None, None, None, None
 
         # 提取批次中的各个组件
         encoded_pairs = [item[0] for item in batch]  # list of [num_attrs, seq_len]
         masks = [item[1] for item in batch]  # list of [num_attrs, seq_len]
         labels = [item[2] for item in batch]  # list of scalars
+        num_similarities = [item[3] for item in batch]  # list of scalars
 
         # 获取这个批次中的最大属性数
         max_attrs = max(x.size(0) for x in encoded_pairs)
@@ -172,4 +213,7 @@ class DittoDataset(data.Dataset):
         encoded_pairs = encoded_pairs.permute(1, 0, 2)  # [num_attrs, batch_size, seq_len]
         masks = masks.permute(0, 2, 1)  # [batch_size, seq_len, num_attrs]
         
-        return encoded_pairs, masks, torch.LongTensor(labels)
+        # 转换数字感知相似度为张量
+        num_similarities = torch.FloatTensor(num_similarities)
+        
+        return encoded_pairs, masks, torch.LongTensor(labels), num_similarities

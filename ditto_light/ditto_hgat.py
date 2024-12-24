@@ -17,9 +17,9 @@ lm_mp = {
 }
 
 class DittoHGATModel(nn.Module):
-    """Enhanced Ditto model with Hierarchical Graph Attention Networks"""
+    """Enhanced Ditto model with Hierarchical Graph Attention Networks and Number Perception"""
     
-    def __init__(self, device='cuda', lm='roberta', alpha_aug=0.8):
+    def __init__(self, device='cuda', lm='roberta', alpha_aug=0.8, use_number_perception=False):
         super().__init__()
         # Load pre-trained language model
         if lm in lm_mp:
@@ -29,6 +29,7 @@ class DittoHGATModel(nn.Module):
 
         self.device = device
         self.alpha_aug = alpha_aug
+        self.use_number_perception = use_number_perception
 
         # Get hidden size from BERT config
         hidden_size = self.bert.config.hidden_size
@@ -37,6 +38,23 @@ class DittoHGATModel(nn.Module):
         self.token_attention = AttentionLayer(hidden_size)
         self.global_attention = GlobalAttentionLayer(hidden_size)
         self.struct_attention = StructAttentionLayer(hidden_size)
+
+        # 如果使用数字感知，添加特征融合层
+        if use_number_perception:
+            # 数字感知特征投影层
+            self.num_projection = nn.Sequential(
+                nn.Linear(1, hidden_size // 4),
+                nn.ReLU(),
+                nn.Linear(hidden_size // 4, hidden_size)
+            )
+            
+            # 特征融合层
+            self.fusion_layer = nn.Sequential(
+                nn.Linear(hidden_size * 2, hidden_size),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+                nn.Linear(hidden_size, hidden_size)
+            )
 
         # Final classification layer
         self.fc = nn.Linear(hidden_size, 2)
@@ -55,16 +73,18 @@ class DittoHGATModel(nn.Module):
         
         return combined_repr
 
-    def forward(self, encoded_pairs, attention_masks, labels=None):
-        """Forward pass with attribute-level processing
+    def forward(self, encoded_pairs, attention_masks, num_similarities=None, labels=None):
+        """Forward pass with attribute-level processing and number perception
         
         Args:
             encoded_pairs: tensor of shape [num_attrs, batch_size, seq_len]
             attention_masks: tensor of shape [batch_size, seq_len, num_attrs]
-            labels: optional tensor of shape [batch_size]
+            num_similarities: tensor of shape [batch_size], optional
+            labels: tensor of shape [batch_size], optional
             
         Returns:
             logits: tensor of shape [batch_size, 2]
+            loss: scalar tensor (if labels provided)
         """
         num_attrs, batch_size, seq_len = encoded_pairs.size()
         
@@ -73,6 +93,8 @@ class DittoHGATModel(nn.Module):
         attention_masks = attention_masks.to(self.device)
         if labels is not None:
             labels = labels.to(self.device)
+        if num_similarities is not None:
+            num_similarities = num_similarities.to(self.device)
         
         # Process each attribute pair
         attr_outputs = []
@@ -89,7 +111,26 @@ class DittoHGATModel(nn.Module):
         attr_outputs = torch.stack(attr_outputs, dim=1)  # [batch_size, num_attrs, hidden_size]
         
         # Apply structural attention to combine attribute representations
-        final_repr = self.struct_attention(attr_outputs)  # [batch_size, hidden_size]
+        text_repr = self.struct_attention(attr_outputs)  # [batch_size, hidden_size]
+        
+        # 如果使用数字感知特征，进行特征融合
+        if self.use_number_perception and num_similarities is not None:
+            # 将数字相似度转换为特征向量
+            num_repr = self.num_projection(num_similarities.unsqueeze(-1))  # [batch_size, hidden_size]
+            
+            # 使用权重进行特征融合
+            # text_repr 和 num_repr 都是 [batch_size, hidden_size]
+            # 使用 number_perception_weight 来控制两种特征的比重
+            alpha = getattr(self, 'number_perception_weight', 0.3)  # 默认权重改为 0.3
+            combined_repr = torch.cat([
+                (1 - alpha) * text_repr,  # 文本特征权重
+                alpha * num_repr          # 数字特征权重
+            ], dim=-1)
+            
+            # 通过融合层
+            final_repr = self.fusion_layer(combined_repr)
+        else:
+            final_repr = text_repr
         
         # Get logits
         logits = self.fc(final_repr)
@@ -112,10 +153,10 @@ def train_epoch(model, iterator, optimizer, scheduler=None, hp=None):
         optimizer.zero_grad()
         
         # Get the inputs
-        encoded_pairs, attention_masks, labels = batch
+        encoded_pairs, attention_masks, labels, num_similarities = batch
         
         # Forward pass
-        loss, logits = model(encoded_pairs, attention_masks, labels)
+        loss, logits = model(encoded_pairs, attention_masks, num_similarities, labels)
         
         # Backward pass
         loss.backward()
@@ -144,10 +185,10 @@ def evaluate(model, iterator):
     
     with torch.no_grad():
         for batch in iterator:
-            encoded_pairs, attention_masks, labels = batch
+            encoded_pairs, attention_masks, labels, num_similarities = batch
             
             # Forward pass
-            logits = model(encoded_pairs, attention_masks)
+            logits = model(encoded_pairs, attention_masks, num_similarities)
             preds = torch.argmax(logits, dim=1)
             
             all_preds.extend(preds.cpu().numpy())
