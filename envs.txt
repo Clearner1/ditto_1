@@ -1,0 +1,6 @@
+base                   D:\anaconda
+MinerU                 D:\anaconda\envs\MinerU
+base_python            D:\anaconda\envs\base_python
+hiergat              * D:\anaconda\envs\hiergat
+matching               D:\anaconda\envs\matching
+python11               D:\anaconda\envs\python11

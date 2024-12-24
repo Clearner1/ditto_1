@@ -17,7 +17,7 @@ if __name__=="__main__":
     parser.add_argument("--model_type", type=str, default="ditto_hgat",
                       choices=["ditto", "ditto_hgat"],
                       help="Choose between original Ditto or enhanced DittoHGAT")
-    parser.add_argument("--task", type=str, default="Structured/Beer")
+    parser.add_argument("--task", type=str, default="Structured/iTunes-Amazon")
     parser.add_argument("--run_id", type=int, default=0)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--max_len", type=int, default=256)
@@ -27,7 +27,7 @@ if __name__=="__main__":
     parser.add_argument("--save_model", dest="save_model", action="store_true")
     parser.add_argument("--logdir", type=str, default="checkpoints/")
     parser.add_argument("--lm", type=str, default='roberta')
-    parser.add_argument("--fp16", dest="fp16", action="store_true")
+    parser.add_argument("--fp16", dest="fp16", action="store_true", default=True)
     parser.add_argument("--size", type=int, default=None)
     parser.add_argument("--use_number_perception", action="store_true",
                       help="Whether to use number perception module", default=False)

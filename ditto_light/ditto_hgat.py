@@ -217,21 +217,24 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
         batch_size=hp.batch_size,
         shuffle=True,
         collate_fn=trainset.pad,
-        num_workers=0
+        num_workers=4,
+        pin_memory=True
     )
     valid_loader = DataLoader(
         validset,
         batch_size=hp.batch_size,
         shuffle=False,
         collate_fn=validset.pad,
-        num_workers=0
+        num_workers=4,
+        pin_memory=True
     )
     test_loader = DataLoader(
         testset,
         batch_size=hp.batch_size,
         shuffle=False,
         collate_fn=testset.pad,
-        num_workers=0
+        num_workers=4,
+        pin_memory=True
     )
     
     # Initialize model
