@@ -169,6 +169,10 @@ class DatabaseManager:
     
     def dispose(self):
         """释放数据库连接池"""
-        if self.engine:
-            self.engine.dispose()
-            logger.info(f"{Fore.CYAN}数据库连接池已释放{Style.RESET_ALL}") 
+        try:
+            if hasattr(self, 'engine') and self.engine is not None:
+                self.engine.dispose()
+                logger.info(f"{Fore.CYAN}数据库连接池已释放{Style.RESET_ALL}")
+        except Exception:
+            # 忽略清理过程中的错误
+            pass

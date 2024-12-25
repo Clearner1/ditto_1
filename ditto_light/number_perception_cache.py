@@ -298,7 +298,7 @@ class NumberPerceptionCache:
         return similarity
 
     def compare_entities(self, entity1: str, entity2: str) -> float:
-        """比较两个实体的数字感知相���度"""
+        """比较两个实体的数字感知相似度"""
         logger.info(f"\n{Fore.MAGENTA}开始比较实体:{Style.RESET_ALL}")
         logger.info(f"实体1: {entity1}")
         logger.info(f"实体2: {entity2}")
@@ -315,6 +315,10 @@ class NumberPerceptionCache:
         return self.calculate_similarity(segments1, segments2)
         
     def __del__(self):
-        """析构函数，确保放数据库连接池"""
-        if hasattr(self, 'db_manager'):
-            self.db_manager.dispose()
+        """析构函数，确保释放数据库连接池"""
+        try:
+            if hasattr(self, 'db_manager') and self.db_manager is not None:
+                self.db_manager.dispose()
+        except Exception:
+            # 忽略清理过程中的错误
+            pass
