@@ -35,7 +35,8 @@ if __name__=="__main__":
                       help="API key for DeepSeek LLM",default="sk-2d50kWpmx7zcZyzXUcB94TXXBnxNZbGHx95zTqcCPHG7Luy8")
     parser.add_argument("--number_perception_weight", type=float, default=0.5,
                       help="Weight for number perception feature fusion")
-
+# sk-6dfe291edc3c4e1585155cab98f8316f
+# 	¥10	2024-12-25 14:19:03	2025-01-24 14:19:03
     hp = parser.parse_args()
 
     seed = hp.run_id
