@@ -17,12 +17,12 @@ if __name__=="__main__":
     parser.add_argument("--model_type", type=str, default="ditto_hgat",
                       choices=["ditto", "ditto_hgat"],
                       help="Choose between original Ditto or enhanced DittoHGAT")
-    parser.add_argument("--task", type=str, default="Structured/iTunes-Amazon")
+    parser.add_argument("--task", type=str, default="Structured/Beer")
     parser.add_argument("--run_id", type=int, default=0)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--max_len", type=int, default=128)
-    parser.add_argument("--lr", type=float, default=3e-5)
-    parser.add_argument("--n_epochs", type=int, default=10)
+    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--n_epochs", type=int, default=20)
     parser.add_argument("--finetuning", dest="finetuning", action="store_true")
     parser.add_argument("--save_model", dest="save_model", action="store_true",default=True)
     parser.add_argument("--logdir", type=str, default="checkpoints/")

@@ -335,10 +335,12 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
         # Print progress
         print(f'Epoch {epoch+1}/{hp.n_epochs}:')
         print(f'  Train Loss: {train_loss:.4f}')
-        print(f'  Valid F1: {dev_metrics["f1"]:.4f}')
-        print(f'  Test F1: {test_metrics["f1"]:.4f}')
+        print(f'  Valid Metrics:')
+        print(f'    F1: {dev_metrics["f1"]:.4f}')
+        print(f'  Test Metrics:')
+        print(f'    F1: {test_metrics["f1"]:.4f}')
         print(f'  Time: {time.time() - start_time:.2f}s')
-        print(f'  Best epoch: {best_epoch+1} with F1: {best_dev_f1:.4f}')
+        print(f'  Best epoch: {best_epoch+1} with Valid F1: {best_dev_f1:.4f}')
     
     # Load best model and evaluate on test set
     if hp.save_model:
@@ -350,11 +352,12 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
     
     print('\nFinal Test Results:')
     print(f'  Best epoch: {best_epoch+1}')
-    print(f'  Best Model Metrics:')
+    print(f'  Best Model Metrics (on Test Set):')
     print(f'    Accuracy: {best_metrics["accuracy"]:.4f}')
     print(f'    Precision: {best_metrics["precision"]:.4f}')
     print(f'    Recall: {best_metrics["recall"]:.4f}')
     print(f'    F1: {best_metrics["f1"]:.4f}')
+    print(f'\n  Best Validation F1: {best_dev_f1:.4f}')
     
     writer.close()
     return final_test_metrics 
