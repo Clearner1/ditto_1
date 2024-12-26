@@ -19,10 +19,10 @@ if __name__=="__main__":
                       help="Choose between original Ditto or enhanced DittoHGAT")
     parser.add_argument("--task", type=str, default="Structured/iTunes-Amazon")
     parser.add_argument("--run_id", type=int, default=0)
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--max_len", type=int, default=256)
-    parser.add_argument("--lr", type=float, default=2e-5)
-    parser.add_argument("--n_epochs", type=int, default=15)
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--max_len", type=int, default=128)
+    parser.add_argument("--lr", type=float, default=3e-5)
+    parser.add_argument("--n_epochs", type=int, default=10)
     parser.add_argument("--finetuning", dest="finetuning", action="store_true")
     parser.add_argument("--save_model", dest="save_model", action="store_true",default=True)
     parser.add_argument("--logdir", type=str, default="checkpoints/")
@@ -30,7 +30,7 @@ if __name__=="__main__":
     parser.add_argument("--fp16", dest="fp16", action="store_true", default=True)
     parser.add_argument("--size", type=int, default=None)
     parser.add_argument("--use_number_perception", action="store_true",
-                      help="Whether to use number perception module", default=True)
+                      help="Whether to use number perception module", default=False)
     parser.add_argument("--number_perception_api_key", type=str, 
                       help="API key for DeepSeek LLM",default="sk-6dfe291edc3c4e1585155cab98f8316f")
     parser.add_argument("--number_perception_weight", type=float, default=0.5,
@@ -55,9 +55,19 @@ if __name__=="__main__":
 
     task = hp.task
 
-    run_tag = '%s_model=%s_lm=%s_size=%s_np=%s_id=%d' % (
-        task, hp.model_type, hp.lm, str(hp.size), 
-        str(hp.use_number_perception), hp.run_id)
+    run_tag = '%s_model=%s_lm=%s_bs=%d_lr=%.0e_ep=%d_len=%d_size=%s_np=%s_npw=%.2f_fp16=%s_id=%d' % (
+        task, 
+        hp.model_type, 
+        hp.lm, 
+        hp.batch_size,
+        hp.lr,
+        hp.n_epochs,
+        hp.max_len,
+        str(hp.size), 
+        str(hp.use_number_perception),
+        hp.number_perception_weight,
+        str(hp.fp16),
+        hp.run_id)
     run_tag = run_tag.replace('/', '_')
 
     configs = json.load(open('configs.json'))

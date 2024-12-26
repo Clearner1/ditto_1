@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import AutoModel, AdamW, get_linear_schedule_with_warmup
+from transformers import AutoModel, get_linear_schedule_with_warmup
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 import numpy as np
@@ -150,30 +151,39 @@ def train_epoch(model, iterator, optimizer, scheduler=None, hp=None):
     model.train()
     total_loss = 0
     
+    # 设置梯度累积步数
+    accumulation_steps = 4  # 累积4步，相当于batch_size=16
+    optimizer.zero_grad()
+    
     for i, batch in enumerate(iterator):
-        optimizer.zero_grad()
-        
         # Get the inputs
         encoded_pairs, attention_masks, labels, num_similarities = batch
         
         # Forward pass
         loss, logits = model(encoded_pairs, attention_masks, num_similarities, labels)
         
+        # 将损失除以累积步数
+        loss = loss / accumulation_steps
+        
         # Backward pass
         loss.backward()
-        optimizer.step()
-        if scheduler:
-            scheduler.step()
+        
+        # 每accumulation_steps步更新一次参数
+        if (i + 1) % accumulation_steps == 0:
+            optimizer.step()
+            if scheduler:
+                scheduler.step()
+            optimizer.zero_grad()
             
-        total_loss += loss.item()
+        total_loss += loss.item() * accumulation_steps
         
         if hp and hp.fp16:
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 if i % 10 == 0:
-                    print(f"step: {i}, loss: {loss.item():.4f}")
+                    print(f"step: {i}, loss: {loss.item() * accumulation_steps:.4f}")
         else:
             if i % 10 == 0:
-                print(f"step: {i}, loss: {loss.item():.4f}")
+                print(f"step: {i}, loss: {loss.item() * accumulation_steps:.4f}")
                 
     return total_loss / len(iterator)
 
@@ -305,6 +315,7 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
         if dev_metrics['f1'] > best_dev_f1:
             best_dev_f1 = dev_metrics['f1']
             best_epoch = epoch
+            best_metrics = test_metrics.copy()  # 保存最佳epoch的所有指标
             no_improvement = 0
             if hp.save_model:
                 model_path = os.path.join(checkpoint_dir, 'model_best.pt')
@@ -313,7 +324,7 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict(),
-                    'best_f1': best_dev_f1,
+                    'best_metrics': best_metrics,  # 保存所有指标
                 }, model_path)
         else:
             no_improvement += 1
@@ -339,10 +350,11 @@ def train(trainset, validset, testset, run_tag, hp, device='cuda'):
     
     print('\nFinal Test Results:')
     print(f'  Best epoch: {best_epoch+1}')
-    print(f'  Accuracy: {final_test_metrics["accuracy"]:.4f}')
-    print(f'  Precision: {final_test_metrics["precision"]:.4f}')
-    print(f'  Recall: {final_test_metrics["recall"]:.4f}')
-    print(f'  F1: {final_test_metrics["f1"]:.4f}')
+    print(f'  Best Model Metrics:')
+    print(f'    Accuracy: {best_metrics["accuracy"]:.4f}')
+    print(f'    Precision: {best_metrics["precision"]:.4f}')
+    print(f'    Recall: {best_metrics["recall"]:.4f}')
+    print(f'    F1: {best_metrics["f1"]:.4f}')
     
     writer.close()
     return final_test_metrics 
