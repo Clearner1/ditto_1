@@ -24,18 +24,19 @@ if __name__=="__main__":
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--n_epochs", type=int, default=15)
     parser.add_argument("--finetuning", dest="finetuning", action="store_true")
-    parser.add_argument("--save_model", dest="save_model", action="store_true")
+    parser.add_argument("--save_model", dest="save_model", action="store_true",default=True)
     parser.add_argument("--logdir", type=str, default="checkpoints/")
     parser.add_argument("--lm", type=str, default='roberta')
     parser.add_argument("--fp16", dest="fp16", action="store_true", default=True)
     parser.add_argument("--size", type=int, default=None)
     parser.add_argument("--use_number_perception", action="store_true",
-                      help="Whether to use number perception module", default=False)
+                      help="Whether to use number perception module", default=True)
     parser.add_argument("--number_perception_api_key", type=str, 
-                      help="API key for DeepSeek LLM",default="sk-2d50kWpmx7zcZyzXUcB94TXXBnxNZbGHx95zTqcCPHG7Luy8")
+                      help="API key for DeepSeek LLM",default="sk-6dfe291edc3c4e1585155cab98f8316f")
     parser.add_argument("--number_perception_weight", type=float, default=0.5,
                       help="Weight for number perception feature fusion")
-# sk-6dfe291edc3c4e1585155cab98f8316f
+# sk-6dfe291edc3c4e1585155cab98f8316f(deepseek api)
+# sk-2d50kWpmx7zcZyzXUcB94TXXBnxNZbGHx95zTqcCPHG7Luy8 (dmx api)
 # 	¥10	2024-12-25 14:19:03	2025-01-24 14:19:03
     hp = parser.parse_args()
 

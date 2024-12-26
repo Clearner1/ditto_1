@@ -66,7 +66,7 @@ class NumberPerceptionCache:
         # 初始化OpenAI客户端
         self.client = OpenAI(
             api_key=api_key,
-            base_url="https://www.DMXapi.com/v1"
+            base_url="https://api.deepseek.com"
         )
         
         # 初始化数据库管理器
